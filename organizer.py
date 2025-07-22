@@ -1,91 +1,124 @@
+# organizer.py
+
 import os
 import re
 
-def organize(filepath: str, custom_list: list) -> None:
-    if not os.path.isdir(filepath):
-        print(f"错误：文件夹 '{filepath}' 不存在或不是一个文件夹！程序退出。")
-        return
+from PySide6.QtCore import QObject, Signal
 
-    print(f'即将整理位于 {filepath} 的文件...')
 
-    # 定义默认分类
-    default_dirs = {
-        '图片': os.path.join(filepath, '图片'),
-        '视频': os.path.join(filepath, '视频'),
-        '文档': os.path.join(filepath, '文档'),
-        '其他': os.path.join(filepath, '其他')
-    }
-    # 创建所有默认文件夹
-    for dir_path in default_dirs.values():
-        os.makedirs(dir_path, exist_ok=True)
+class FileOrganizer(QObject):
+    # 状态更新信号
+    status_updated = Signal(str)
+    # 进度信号
+    progress_updated = Signal(int)
+    # 结束信号
+    finished = Signal()
 
-    # 创建所有自定义文件夹
-    custom_dirs = {}
-    for item in custom_list:
-        folder_name = ''
-        if item.startswith('.'):
-            folder_name = f'拓展名为{item}的文件'
-        else:
-            folder_name = f'文件名中存在{item}的文件'
-        dir_path = os.path.join(filepath, folder_name)
-        os.makedirs(dir_path, exist_ok=True)
-        custom_dirs[item] = dir_path
+    def __init__(self, filepath, custom_list):
+        super().__init__()
+        self.filepath = filepath
+        self.custom_list = custom_list if custom_list is not None else []
+        self.isRunning = True
 
-    # --- 开始整理 ---
-    try:
-        filelist = os.listdir(filepath)
-        for f in filelist:
-            old_path = os.path.join(filepath, f)
+    def stop(self):
+        self.isRunning = False
 
-            # 如果不是文件，或者就是要创建的那些目录，就直接跳过
-            if not os.path.isfile(old_path) or old_path in default_dirs.values() or old_path in custom_dirs.values():
-                continue
+    def organize(self):
+        if not os.path.isdir(self.filepath):
+            self.status_updated.emit(f"错误：文件夹 '{self.filepath}' 不存在！")
+            self.finished.emit()
+            return
 
-            filename, ext = os.path.splitext(f)
-            ext_lower = ext.lower()
+        self.status_updated.emit(f'准备整理位于 {self.filepath} 的文件...')
 
-            moved = False # 设置标志判断文件是否已经被移动过
+        # 定义默认分类
+        default_dirs = {
+            '图片': os.path.join(self.filepath, '图片'),
+            '视频': os.path.join(self.filepath, '视频'),
+            '文档': os.path.join(self.filepath, '文档'),
+            '其他': os.path.join(self.filepath, '其他')
+        }
+        # 创建所有默认文件夹
+        for dir_path in default_dirs.values():
+            os.makedirs(dir_path, exist_ok=True)
 
-            # 处理自定义列表
-            for item in custom_list:
-                # 按拓展名匹配
-                if item.startswith('.') and ext_lower == item.lower():
-                    dest_folder = custom_dirs[item]
-                    new_path = os.path.join(dest_folder, f)
-                    print(f"正在移动 [自定义-后缀] {f}")
-                    os.rename(old_path, new_path)
-                    moved = True
-                    break
+        # 创建所有自定义文件夹
+        custom_dirs = {}
+        for item in self.custom_list:
+            folder_name = ''
+            if item.startswith('.'):
+                folder_name = f'拓展名为{item}的文件'
+            else:
+                folder_name = f'文件名中存在{item}的文件'
+            dir_path = os.path.join(self.filepath, folder_name)
+            os.makedirs(dir_path, exist_ok=True)
+            custom_dirs[item] = dir_path
 
-                # 按文件名关键词匹配
-                elif not item.startswith('.'):
-                    if re.search(re.escape(item), filename, re.IGNORECASE): # re.escape避免特殊字符问题
+        # --- 开始整理 ---
+        try:
+            filelist = [f for f in os.listdir(self.filepath) if os.path.isfile(os.path.join(self.filepath, f))]
+            total_files = len(filelist)
+            if total_files == 0:
+                self.status_updated.emit("文件夹为空，无需整理。")
+                self.finished.emit()
+                return
+
+            processed_files = 0
+            for f in filelist:
+                if not self.isRunning:
+                    self.status_updated.emit("任务已被用户取消。")
+                    self.finished.emit()
+                    return
+                old_path = os.path.join(self.filepath, f)
+
+                filename, ext = os.path.splitext(f)
+                ext_lower = ext.lower()
+
+                moved = False
+
+                # 处理自定义列表
+                for item in self.custom_list:
+                    if item.startswith('.') and ext_lower == item.lower():
                         dest_folder = custom_dirs[item]
                         new_path = os.path.join(dest_folder, f)
-                        print(f"正在移动 [自定义-关键词] {f}")
+                        self.status_updated.emit(f"正在移动 [自定义-后缀] {f}")
                         os.rename(old_path, new_path)
                         moved = True
                         break
+                    elif not item.startswith('.'):
+                        if re.search(re.escape(item), filename, re.IGNORECASE):
+                            dest_folder = custom_dirs[item]
+                            new_path = os.path.join(dest_folder, f)
+                            self.status_updated.emit(f"正在移动 [自定义-关键词] {f}")
+                            os.rename(old_path, new_path)
+                            moved = True
+                            break
 
-            if not moved:
-                if ext_lower in ['.jpg', '.png', '.gif', '.jpeg', '.bmp', '.svg']:
-                    new_path = os.path.join(default_dirs['图片'], f)
-                    print(f"正在移动 [图片] {f} ...")
-                    os.rename(old_path, new_path)
-                elif ext_lower in ['.mp4', '.mov', '.avi', '.mkv', '.wmv']:
-                    new_path = os.path.join(default_dirs['视频'], f)
-                    print(f"正在移动 [视频] {f} ...")
-                    os.rename(old_path, new_path)
-                elif ext_lower in ['.txt', '.doc', '.docx', '.rtf', '.xlsx', '.xls', '.ppt', '.pptx', '.pdf']:
-                    new_path = os.path.join(default_dirs['文档'], f)
-                    print(f"正在移动 [文档] {f}")
-                    os.rename(old_path, new_path)
-                else:
-                    new_path = os.path.join(default_dirs['其他'], f)
-                    print(f"正在移动 [其他] {f}")
-                    os.rename(old_path, new_path)
+                if not moved:
+                    if ext_lower in ['.jpg', '.png', '.gif', '.jpeg', '.bmp', '.svg']:
+                        new_path = os.path.join(default_dirs['图片'], f)
+                        self.status_updated.emit(f"正在移动 [图片] {f} ...")
+                        os.rename(old_path, new_path)
+                    elif ext_lower in ['.mp4', '.mov', '.avi', '.mkv', '.wmv']:
+                        new_path = os.path.join(default_dirs['视频'], f)
+                        self.status_updated.emit(f"正在移动 [视频] {f} ...")
+                        os.rename(old_path, new_path)
+                    elif ext_lower in ['.txt', '.doc', '.docx', '.rtf', '.xlsx', '.xls', '.ppt', '.pptx', '.pdf']:
+                        new_path = os.path.join(default_dirs['文档'], f)
+                        self.status_updated.emit(f"正在移动 [文档] {f}")
+                        os.rename(old_path, new_path)
+                    else:
+                        new_path = os.path.join(default_dirs['其他'], f)
+                        self.status_updated.emit(f"正在移动 [其他] {f}")
+                        os.rename(old_path, new_path)
 
-        print('文件整理完毕！')
+                processed_files += 1
+                progress = int((processed_files / total_files) * 100)
+                self.progress_updated.emit(progress)
 
-    except Exception as e:
-        print(f"整理过程中发生错误: {e}")
+            self.status_updated.emit('文件整理完毕！')
+            self.finished.emit()
+
+        except Exception as e:
+            self.status_updated.emit(f"整理过程中发生错误: {e}")
+            self.finished.emit()
