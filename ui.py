@@ -1,18 +1,18 @@
 # ui.py
-
-from PySide6.QtCore import Qt, Signal, QThread
+from PySide6.QtCore import Qt, Signal, QThread, QDate
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QDialog, \
-    QFileDialog, QWidget, QProgressBar
+    QFileDialog, QWidget, QProgressBar, QTabWidget, QGroupBox, QCheckBox, QDateEdit, QComboBox
 from organizer import FileOrganizer
 
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         self.setWindowTitle('文件整理')
-        self.resize(550, 400)
+        self.resize(550, 350)
         self.filepath = None
         self.custom_list = []
         self.custom_window = None
+        self.advanced_settings_window = None
         self.worker_thread = None
         self.organizer = None
 
@@ -58,7 +58,7 @@ class MainWindow(QWidget):
         select_layout.addWidget(self.select_dir_button)
 
         # 自定义设置
-        custom_label = QLabel(' (可选) 自定义规则：', self)
+        custom_label = QLabel(' 高级整理设置(可选)：', self)
         self.custom_button = QPushButton('设置', self)
         custom_layout = QHBoxLayout()
         custom_layout.addWidget(custom_label)
@@ -81,14 +81,14 @@ class MainWindow(QWidget):
         whole_layout.addLayout(custom_layout)
         whole_layout.addStretch(1)
         whole_layout.addWidget(self.start_button)
-        whole_layout.addStretch(2)
+        whole_layout.addStretch(1)
         whole_layout.addWidget(QLabel("整理状态:"))
         whole_layout.addWidget(self.status_label)
         whole_layout.addWidget(self.progress_bar)
 
         # 连接槽函数
         self.select_dir_button.clicked.connect(self.getDir)
-        self.custom_button.clicked.connect(self.open_customUI)
+        self.custom_button.clicked.connect(self.open_advanced_settings)
         self.start_button.clicked.connect(self.start_organization)
 
     def getDir(self):
@@ -102,7 +102,6 @@ class MainWindow(QWidget):
             self.progress_bar.setValue(0)
 
     def start_organization(self):
-        # --- 这是实现多线程的核心 ---
         if not self.filepath:
             QMessageBox.warning(self, "警告", "请先选择一个要整理的文件夹！")
             return
@@ -112,39 +111,39 @@ class MainWindow(QWidget):
         self.select_dir_button.setEnabled(False)
         self.custom_button.setEnabled(False)
 
-        # 1. 创建 QThread 和 FileOrganizer 实例
+        # 创建 QThread 和 FileOrganizer 实例
         self.worker_thread = QThread()
         self.organizer = FileOrganizer(self.filepath, self.custom_list)
 
-        # 2. 将 organizer "移动" 到新线程中
+        # 将 organizer移动到新线程中
         self.organizer.moveToThread(self.worker_thread)
 
-        # 3. 连接信号和槽
-        #    当线程启动时，执行 organizer.organize 方法
+        # 连接信号和槽
+        # 当线程启动时，执行 organizer.organize 方法
         self.worker_thread.started.connect(self.organizer.organize)
 
-        #    连接 organizer 的信号到 MainWindow 的槽函数，以更新UI
+        # 连接 organizer 的信号到 MainWindow 的槽函数，以更新UI
         self.organizer.progress_updated.connect(self.update_progress)
         self.organizer.status_updated.connect(self.update_status)
         self.organizer.finished.connect(self.on_finished)
 
-        #    当任务完成时，我们还需要退出并清理线程
+        # 当任务完成时，退出并清理线程
         self.organizer.finished.connect(self.worker_thread.quit)
         self.organizer.finished.connect(self.organizer.deleteLater)
         self.worker_thread.finished.connect(self.worker_thread.deleteLater)
 
-        # 4. 启动线程
+        # 启动线程
         self.worker_thread.start()
 
-    # <--- 新增槽函数：更新进度条
+    # 更新进度条
     def update_progress(self, value):
         self.progress_bar.setValue(value)
 
-    # <--- 新增槽函数：更新状态文本
+    # 更新状态文本
     def update_status(self, message):
         self.status_label.setText(message)
 
-    # <--- 新增槽函数：任务完成后的处理
+    # 任务完成后的处理
     def on_finished(self):
         # 重新启用按钮
         self.start_button.setEnabled(True)
@@ -167,6 +166,11 @@ class MainWindow(QWidget):
     def update_custom_list(self, received_list):
         self.custom_list = received_list
         QMessageBox.information(self, "提示", "自定义设置已保存！")
+
+    def open_advanced_settings(self):
+        if self.advanced_settings_window is None:
+            self.advanced_settings_window = AdvancedSettings()
+        self.advanced_settings_window.show()
 
 
 class CustomUI(QDialog):
@@ -221,3 +225,110 @@ class CustomUI(QDialog):
             custom_list = [item.strip() for item in line_text.split(',') if item.strip()]
         self.custom_confirmed.emit(custom_list)
         self.close()
+
+class AdvancedSettings(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("高级整理设置")
+        self.resize(450, 400)
+        w_layout = QVBoxLayout(self)
+        self.setLayout(w_layout)
+
+        self.advanced_settings_tab = QTabWidget()
+
+        # group样式
+        group_style = ("""
+                   QGroupBox::title {
+                        subcontrol-position: top center;
+                        }
+               """)
+        # 分类规则界面
+        classification_tab = QWidget()
+        classification_tab.setStyleSheet(group_style)
+        classification_tab_layout = QVBoxLayout()
+
+        classification_group = QGroupBox("分类规则")
+        classification_layout = QVBoxLayout()
+
+        # 预设规则选项
+        default_layout = QHBoxLayout()
+        image_checkbox = QCheckBox("图片")
+        image_checkbox.setChecked(True)
+        default_layout.addWidget(image_checkbox)
+        video_checkbox = QCheckBox("视频")
+        video_checkbox.setChecked(True)
+        default_layout.addWidget(video_checkbox)
+        doc_checkbox = QCheckBox("文档")
+        doc_checkbox.setChecked(True)
+        default_layout.addWidget(doc_checkbox)
+        other_checkbox = QCheckBox("其他")
+        other_checkbox.setChecked(True)
+        default_layout.addWidget(other_checkbox)
+
+        default_label = QLabel("预设规则：")
+        classification_layout.addWidget(default_label)
+        classification_layout.addLayout(default_layout)
+        classification_tab_layout.addWidget(classification_group)
+
+        # 按时间分类
+        time_checkbox = QCheckBox("按时间分类：")
+        time_layout = QHBoxLayout()
+        start_day_label = QLabel("开始日期：")
+        end_day_label = QLabel("结束日期：")
+        # 创建并设置日期选择控件
+        start_date = QDateEdit(calendarPopup=True)
+        end_date = QDateEdit(calendarPopup=True)
+        today = QDate.currentDate()
+        start_date.setDate(today)
+        end_date.setDate(today)
+        # 添加到时间布局
+        time_layout.addWidget(start_day_label)
+        time_layout.addWidget(start_date)
+        time_layout.addWidget(end_day_label)
+        time_layout.addWidget(end_date)
+        # 添加到分类规则布局
+        classification_layout.addWidget(time_checkbox)
+        classification_layout.addLayout(time_layout)
+
+        # 按文件大小分类
+        size_checkbox = QCheckBox("按文件大小分类")
+        size_layout = QHBoxLayout()
+        size_combobox = QComboBox()
+        size_combobox.addItem("大于>")
+        size_combobox.addItem("小于<")
+        size_combobox.addItem("介于两者之间")
+        self.size_edit1 = QLineEdit()
+        self.size_edit1.setPlaceholderText("10")
+        self.size_edit2 = QLineEdit()
+        self.size_edit2.setPlaceholderText("100")
+        big_label = QLabel("大于")
+        small_label = QLabel("小于")
+        size_label = QLabel("MB")
+        both1_label = QLabel("和")
+        both2_label = QLabel("MB之间")
+        # 添加到布局
+        size_layout.addWidget(size_checkbox)
+        size_layout.addWidget(size_combobox)
+        size_layout.addWidget(big_label)
+        size_layout.addWidget(self.size_edit1)
+        size_layout.addWidget(small_label)
+        size_layout.addWidget(both1_label)
+        size_layout.addWidget(self.size_edit2)
+        size_layout.addWidget(size_label)
+        size_layout.addWidget(both2_label)
+
+        classification_layout.addLayout(size_layout)
+
+        classification_group.setLayout(classification_layout)
+        classification_tab.setLayout(classification_tab_layout)
+        self.advanced_settings_tab.addTab(classification_tab, "分类规则")
+        # 筛选规则界面
+        filter_tab = QWidget()
+        self.advanced_settings_tab.addTab(filter_tab, "筛选规则")
+
+        w_layout.addWidget(self.advanced_settings_tab)
+
+
+
+
+
