@@ -4,6 +4,7 @@ from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox, QPushButton, QVBox
     QFileDialog, QWidget, QProgressBar, QTabWidget, QGroupBox, QCheckBox, QDateEdit, QComboBox
 from organizer import FileOrganizer
 
+
 class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
@@ -156,17 +157,6 @@ class MainWindow(QWidget):
         else:
             QMessageBox.critical(self, '错误', f'整理过程中发生错误：\n{self.status_label.text()}')
 
-    def open_customUI(self):
-        if self.custom_window is None:
-            self.custom_window = CustomUI()
-            self.custom_window.custom_confirmed.connect(self.update_custom_list)
-        self.custom_window.show()
-        self.custom_window.finished.connect(lambda: setattr(self, 'custom_window', None))
-
-    def update_custom_list(self, received_list):
-        self.custom_list = received_list
-        QMessageBox.information(self, "提示", "自定义设置已保存！")
-
     def open_advanced_settings(self):
         if self.advanced_settings_window is None:
             self.advanced_settings_window = AdvancedSettings()
@@ -226,31 +216,41 @@ class CustomUI(QDialog):
         self.custom_confirmed.emit(custom_list)
         self.close()
 
+
 class AdvancedSettings(QDialog):
     def __init__(self):
         super().__init__()
+        self.custom_window = None
         self.setWindowTitle("高级整理设置")
-        self.resize(450, 400)
+        self.resize(250, 300)
         w_layout = QVBoxLayout(self)
         self.setLayout(w_layout)
 
         self.advanced_settings_tab = QTabWidget()
 
-        # group样式
-        group_style = ("""
-                   QGroupBox::title {
+        self.setStyleSheet("""
+                    QGroupBox {
+                        font-size: 11pt; /* GroupBox标题可以小一点 */
+                    }
+                    QGroupBox::title {
                         subcontrol-position: top center;
-                        }
-               """)
-        # 分类规则界面
-        classification_tab = QWidget()
-        classification_tab.setStyleSheet(group_style)
-        classification_tab_layout = QVBoxLayout()
+                    }
+                    QLabel, QCheckBox {
+                        font-size: 12pt; /* 标签和复选框的字体 */
+                        font-family: Microsoft YaHe;
+                    }
+                    QPushButton, QComboBox, QDateEdit, QLineEdit {
+                        font-size: 11pt; /* 其他控件的字体 */
+                        font-family: Microsoft YaHe;
+                    }
+                """)
 
+        # 分类规则界面
         classification_group = QGroupBox("分类规则")
         classification_layout = QVBoxLayout()
 
         # 预设规则选项
+        default_label = QLabel("预设规则：")
         default_layout = QHBoxLayout()
         image_checkbox = QCheckBox("图片")
         image_checkbox.setChecked(True)
@@ -265,70 +265,148 @@ class AdvancedSettings(QDialog):
         other_checkbox.setChecked(True)
         default_layout.addWidget(other_checkbox)
 
-        default_label = QLabel("预设规则：")
-        classification_layout.addWidget(default_label)
-        classification_layout.addLayout(default_layout)
-        classification_tab_layout.addWidget(classification_group)
-
         # 按时间分类
-        time_checkbox = QCheckBox("按时间分类：")
+        self.time_checkbox = QCheckBox("按时间分类：")
         time_layout = QHBoxLayout()
         start_day_label = QLabel("开始日期：")
         end_day_label = QLabel("结束日期：")
-        # 创建并设置日期选择控件
-        start_date = QDateEdit(calendarPopup=True)
-        end_date = QDateEdit(calendarPopup=True)
+        self.start_date = QDateEdit(calendarPopup=True)
+        self.end_date = QDateEdit(calendarPopup=True)
         today = QDate.currentDate()
-        start_date.setDate(today)
-        end_date.setDate(today)
+        self.start_date.setDate(today)
+        self.end_date.setDate(today)
         # 添加到时间布局
+        time_layout.addWidget(self.time_checkbox)
         time_layout.addWidget(start_day_label)
-        time_layout.addWidget(start_date)
+        time_layout.addWidget(self.start_date)
         time_layout.addWidget(end_day_label)
-        time_layout.addWidget(end_date)
-        # 添加到分类规则布局
-        classification_layout.addWidget(time_checkbox)
-        classification_layout.addLayout(time_layout)
+        time_layout.addWidget(self.end_date)
+        # 初始设置为禁用
+        self.start_date.setEnabled(False)
+        self.end_date.setEnabled(False)
 
         # 按文件大小分类
-        size_checkbox = QCheckBox("按文件大小分类")
+        self.size_checkbox = QCheckBox("按大小分类：")
         size_layout = QHBoxLayout()
-        size_combobox = QComboBox()
-        size_combobox.addItem("大于>")
-        size_combobox.addItem("小于<")
-        size_combobox.addItem("介于两者之间")
-        self.size_edit1 = QLineEdit()
+        self.size_combobox = QComboBox()
+        self.size_combobox.addItem("大于")
+        self.size_combobox.addItem("小于")
+        self.size_combobox.addItem("介于")
+        self.size_edit1 = QLineEdit()  # edit1总是作为大于的值
         self.size_edit1.setPlaceholderText("10")
-        self.size_edit2 = QLineEdit()
+        self.size_edit2 = QLineEdit()  # edit2总是作为小于的值
         self.size_edit2.setPlaceholderText("100")
-        big_label = QLabel("大于")
-        small_label = QLabel("小于")
-        size_label = QLabel("MB")
-        both1_label = QLabel("和")
-        both2_label = QLabel("MB之间")
+        self.big_label = QLabel("大于")
+        self.small_label = QLabel("小于")
+        self.size_label = QLabel("MB")
+        self.both_label = QLabel("和")
         # 添加到布局
-        size_layout.addWidget(size_checkbox)
-        size_layout.addWidget(size_combobox)
-        size_layout.addWidget(big_label)
+        size_layout.addWidget(self.size_checkbox)
+        size_layout.addWidget(self.size_combobox)
+        size_layout.addWidget(self.big_label)
         size_layout.addWidget(self.size_edit1)
-        size_layout.addWidget(small_label)
-        size_layout.addWidget(both1_label)
+        size_layout.addWidget(self.small_label)
+        size_layout.addWidget(self.both_label)
         size_layout.addWidget(self.size_edit2)
-        size_layout.addWidget(size_label)
-        size_layout.addWidget(both2_label)
+        size_layout.addWidget(self.size_label)
+        # 初始设置为禁用
+        self.size_combobox.setEnabled(False)
+        self.size_edit1.setEnabled(False)
+        self.size_edit2.setEnabled(False)
 
+        # 连接更新标签状态更新函数
+        self.size_combobox.currentIndexChanged.connect(self.update_sizelabel_show)
+
+        # 添加自定义分类选项
+        self.custom_checkbox = QCheckBox("自定义规则：")
+        self.custom_button = QPushButton("添加")
+        custom_layout = QHBoxLayout()
+        custom_layout.addWidget(self.custom_checkbox)
+        custom_layout.addWidget(self.custom_button)
+        # 初始设置为禁用
+        self.custom_button.setEnabled(False)
+        # 连接按钮到自定义规则界面
+        self.custom_button.clicked.connect(self.open_customUI)
+
+        # 连接checkbox更新槽函数
+        self.time_checkbox.stateChanged.connect(self.update_checkbox)
+        self.size_checkbox.stateChanged.connect(self.update_checkbox)
+        self.custom_checkbox.stateChanged.connect(self.update_checkbox)
+
+        # 将所有分类规则组件按顺序添加到布局中
+        classification_layout.addWidget(default_label)
+        classification_layout.addLayout(default_layout)
+        classification_layout.addStretch(1)
+        classification_layout.addLayout(time_layout)
+        classification_layout.addStretch(1)
         classification_layout.addLayout(size_layout)
+        classification_layout.addStretch(1)
+        classification_layout.addLayout(custom_layout)
+        classification_layout.addStretch(1)
 
+        # 为Group设置最终布局
         classification_group.setLayout(classification_layout)
-        classification_tab.setLayout(classification_tab_layout)
-        self.advanced_settings_tab.addTab(classification_tab, "分类规则")
-        # 筛选规则界面
+
+        # 筛选规则界面 (占位)
         filter_tab = QWidget()
+
+        # 将页面添加到TabWidget
+        self.advanced_settings_tab.addTab(classification_group, "分类规则")
         self.advanced_settings_tab.addTab(filter_tab, "筛选规则")
 
         w_layout.addWidget(self.advanced_settings_tab)
 
+        # 初始化UI状态
+        self.update_sizelabel_show()
 
+    def update_sizelabel_show(self):
+        size_choice = self.size_combobox.currentText()
+        if size_choice == "大于":
+            self.big_label.show()
+            self.size_label.setText("MB")
+            self.size_label.show()
+            self.small_label.hide()
+            self.both_label.hide()
+            self.size_edit1.show()
+            self.size_edit2.hide()
+        elif size_choice == "小于":
+            self.big_label.hide()
+            self.size_label.setText("MB")
+            self.size_label.show()
+            self.small_label.show()
+            self.both_label.hide()
+            self.size_edit1.hide()
+            self.size_edit2.show()
+        elif size_choice == "介于":
+            self.big_label.hide()
+            self.size_label.setText("MB 之间")
+            self.size_label.show()
+            self.small_label.hide()
+            self.both_label.show()
+            self.size_edit1.show()
+            self.size_edit2.show()
 
+    def open_customUI(self):
+        if self.custom_window is None:
+            self.custom_window = CustomUI()
+            self.custom_window.custom_confirmed.connect(self.update_custom_list)
+        self.custom_window.show()
+        self.custom_window.finished.connect(lambda: setattr(self, 'custom_window', None))
 
+    def update_custom_list(self, received_list):
+        self.custom_list = received_list
+        QMessageBox.information(self, "提示", "自定义设置已保存！")
 
+    def update_checkbox(self):
+        sender_checkbox = self.sender()
+        is_checked = sender_checkbox.isChecked()
+        print(f"Checkbox {sender_checkbox.text()} state: {'Checked' if is_checked else 'Unchecked'}")
+        if sender_checkbox == self.time_checkbox:
+            self.start_date.setEnabled(is_checked)
+            self.end_date.setEnabled(is_checked)
+        elif sender_checkbox == self.size_checkbox:
+            self.size_combobox.setEnabled(is_checked)
+            self.size_edit1.setEnabled(is_checked)
+            self.size_edit2.setEnabled(is_checked)
+        elif sender_checkbox == self.custom_checkbox:
+            self.custom_button.setEnabled(is_checked)
