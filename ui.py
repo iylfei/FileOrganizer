@@ -1,7 +1,9 @@
 # ui.py
+from pydoc import describe
+
 from PySide6.QtCore import Qt, Signal, QThread, QDate
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QDialog, \
-    QFileDialog, QWidget, QProgressBar, QTabWidget, QGroupBox, QCheckBox, QDateEdit, QComboBox
+    QFileDialog, QWidget, QProgressBar, QTabWidget, QGroupBox, QCheckBox, QDateEdit, QComboBox, QTextEdit
 from organizer import FileOrganizer
 
 
@@ -230,17 +232,17 @@ class AdvancedSettings(QDialog):
 
         self.setStyleSheet("""
                     QGroupBox {
-                        font-size: 11pt; /* GroupBox标题可以小一点 */
+                        font-size: 11pt; / GroupBox标题可以小一点 /
                     }
                     QGroupBox::title {
                         subcontrol-position: top center;
                     }
                     QLabel, QCheckBox {
-                        font-size: 12pt; /* 标签和复选框的字体 */
+                        font-size: 12pt; / 标签和复选框的字体 /
                         font-family: Microsoft YaHe;
                     }
                     QPushButton, QComboBox, QDateEdit, QLineEdit {
-                        font-size: 11pt; /* 其他控件的字体 */
+                        font-size: 11pt; / 其他控件的字体 /
                         font-family: Microsoft YaHe;
                     }
                 """)
@@ -322,7 +324,9 @@ class AdvancedSettings(QDialog):
         self.custom_button = QPushButton("添加")
         custom_layout = QHBoxLayout()
         custom_layout.addWidget(self.custom_checkbox)
+        custom_layout.addStretch()
         custom_layout.addWidget(self.custom_button)
+        custom_layout.addStretch()
         # 初始设置为禁用
         self.custom_button.setEnabled(False)
         # 连接按钮到自定义规则界面
@@ -347,12 +351,58 @@ class AdvancedSettings(QDialog):
         # 为Group设置最终布局
         classification_group.setLayout(classification_layout)
 
-        # 筛选规则界面 (占位)
+        # 筛选规则界面
         filter_tab = QWidget()
+        filter_layout = QVBoxLayout()
+        filter_tab.setLayout(filter_layout)
+
+
+        # 说明界面
+        instruction_tab = QWidget()
+        instruction_edit = QTextEdit()
+        instruction_edit.setReadOnly(True)
+        instruction_edit.setText("""
+        说明：请阅读以下规则以更好地使用本功能。
+
+        一、分类规则 (Classification Rules)
+        
+        分类规则决定了文件如何被归入不同的文件夹。规则具有优先级，程序会从高到低依次应用：
+
+        优先级顺序：
+        1.  自定义规则 (最高)
+        2.  按大小分类
+        3.  按时间分类
+        4.  预设分类 (最低)
+
+        工作方式：
+           程序首先会用最高优先级的规则（例如“自定义规则”）来整理所有文件。
+           整理完毕后，剩下未被分类的文件会接着被下一个优先级的规则（例如“按大小分类”）处理。
+           这个过程会一直持续下去，直到所有勾选的规则都应用完毕。
+
+        示例：
+        如果您同时勾选了“自定义规则”和“按时间分类”：
+        1.  程序会先根据您的自定义关键词，将匹配的文件（如 "报告.docx", "文章.docx"）放入“自定义”文件夹。
+        2.  然后，在剩余的文件中，程序会再找出那些符合您设定时间范围的文件，并将它们移入以时间命名的文件夹。
+        ——————————————————
+        二、筛选规则 (Filtering Rules)
+
+        筛选规则像一个过滤器，它与“分类规则”同时工作，用于在分类时添加额外的限制条件。
+
+        工作方式：
+           当您启用一个分类规则时（如“预设分类”），如果您同时启用了筛选规则（如“按时间筛选”），那么只有同时满足这两个条件的文件才会被整理。
+
+        示例：
+        如果您勾选了分类规则中的“预设分类”（整理图片、视频等），并且在筛选规则中设置了时间范围为“2024年全年”：
+           最终的整理结果将是：在您指定的文件夹中，所有创建于2024年的图片、视频、文档等文件才会被分类。其他时间的文件，即使是图片，也不会被处理。
+        """)
+        instruction_layout = QVBoxLayout()
+        instruction_layout.addWidget(instruction_edit)
+        instruction_tab.setLayout(instruction_layout)
 
         # 将页面添加到TabWidget
         self.advanced_settings_tab.addTab(classification_group, "分类规则")
         self.advanced_settings_tab.addTab(filter_tab, "筛选规则")
+        self.advanced_settings_tab.addTab(instruction_tab, "说明")
 
         w_layout.addWidget(self.advanced_settings_tab)
 
