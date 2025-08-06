@@ -3,7 +3,7 @@ from pydoc import describe
 
 from PySide6.QtCore import Qt, Signal, QThread, QDate
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QDialog, \
-    QFileDialog, QWidget, QProgressBar, QTabWidget, QGroupBox, QCheckBox, QDateEdit, QComboBox, QTextEdit
+    QFileDialog, QWidget, QProgressBar, QTabWidget, QGroupBox, QCheckBox, QDateEdit, QComboBox, QTextEdit, QSizePolicy
 from organizer import FileOrganizer
 
 
@@ -195,19 +195,25 @@ class CustomUI(QDialog):
         w_layout.addWidget(info_label, alignment=Qt.AlignCenter)
 
         # 加入确定和取消按钮
-        confirm_button = QPushButton('确定', self)
+        self.confirm_button = QPushButton('确定', self)
         cancel_button = QPushButton('取消', self)
+        self.confirm_button.setEnabled(False)
         c_layout = QHBoxLayout()
         c_layout.addStretch(1)
-        c_layout.addWidget(confirm_button)
+        c_layout.addWidget(self.confirm_button)
         c_layout.addStretch(1)
         c_layout.addWidget(cancel_button)
         c_layout.addStretch(1)
         w_layout.addLayout(c_layout)
 
         # 连接确定和取消按钮
-        confirm_button.clicked.connect(self.confirm_and_close)
+        self.confirm_button.clicked.connect(self.confirm_and_close)
         cancel_button.clicked.connect(self.close)
+        # 连接input_edit更改信号
+        self.input_lineedit.textChanged.connect(self.enable_confirmbutton)
+
+    def enable_confirmbutton(self,text):
+        self.confirm_button.setEnabled(bool(text.strip()))
 
     def confirm_and_close(self):
         line_text = self.input_lineedit.text()
@@ -232,17 +238,17 @@ class AdvancedSettings(QDialog):
 
         self.setStyleSheet("""
                     QGroupBox {
-                        font-size: 11pt; / GroupBox标题可以小一点 /
+                        font-size: 11pt; 
                     }
                     QGroupBox::title {
                         subcontrol-position: top center;
                     }
                     QLabel, QCheckBox {
-                        font-size: 12pt; / 标签和复选框的字体 /
+                        font-size: 12pt; 
                         font-family: Microsoft YaHe;
                     }
                     QPushButton, QComboBox, QDateEdit, QLineEdit {
-                        font-size: 11pt; / 其他控件的字体 /
+                        font-size: 11pt; 
                         font-family: Microsoft YaHe;
                     }
                 """)
@@ -281,8 +287,10 @@ class AdvancedSettings(QDialog):
         time_layout.addWidget(self.time_checkbox)
         time_layout.addWidget(start_day_label)
         time_layout.addWidget(self.start_date)
+        time_layout.addStretch()
         time_layout.addWidget(end_day_label)
         time_layout.addWidget(self.end_date)
+        time_layout.addStretch()
         # 初始设置为禁用
         self.start_date.setEnabled(False)
         self.end_date.setEnabled(False)
@@ -311,6 +319,7 @@ class AdvancedSettings(QDialog):
         size_layout.addWidget(self.both_label)
         size_layout.addWidget(self.size_edit2)
         size_layout.addWidget(self.size_label)
+        size_layout.addStretch()
         # 初始设置为禁用
         self.size_combobox.setEnabled(False)
         self.size_edit1.setEnabled(False)
@@ -324,8 +333,8 @@ class AdvancedSettings(QDialog):
         self.custom_button = QPushButton("添加")
         custom_layout = QHBoxLayout()
         custom_layout.addWidget(self.custom_checkbox)
-        custom_layout.addStretch()
         custom_layout.addWidget(self.custom_button)
+        self.custom_button.setSizePolicy(QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed))
         custom_layout.addStretch()
         # 初始设置为禁用
         self.custom_button.setEnabled(False)
@@ -352,17 +361,82 @@ class AdvancedSettings(QDialog):
         classification_group.setLayout(classification_layout)
 
         # 筛选规则界面
-        filter_tab = QWidget()
+        filter_group = QGroupBox("筛选规则")
+        self.advanced_settings_tab.addTab(filter_group, "筛选规则")
         filter_layout = QVBoxLayout()
-        filter_tab.setLayout(filter_layout)
 
+        # 按时间筛选
+        self.time_filter_checkbox = QCheckBox("按时间筛选")
+        time_filter_layout = QHBoxLayout()
+        self.start_filter_label = QLabel("开始日期：")
+        self.start_filter_date = QDateEdit(calendarPopup=True)
+        self.start_filter_date.setDate(today)
+        self.end_filter_label = QLabel("结束日期：")
+        self.end_filter_date = QDateEdit(calendarPopup=True)
+        self.end_filter_date.setDate(today)
+        # 初始禁用
+        self.start_filter_date.setEnabled(False)
+        self.end_filter_date.setEnabled(False)
+        # 添加到time_filter布局
+        time_filter_layout.addWidget(self.start_filter_label)
+        time_filter_layout.addWidget(self.start_filter_date)
+        time_filter_layout.addStretch()
+        time_filter_layout.addWidget(self.end_filter_label)
+        time_filter_layout.addWidget(self.end_filter_date)
+        time_filter_layout.addStretch()
+
+        # 按大小筛选
+        self.size_filter_checkbox = QCheckBox("按大小筛选")
+        size_filter_layout = QHBoxLayout()
+        self.size_filter_combobox = QComboBox()
+        self.size_filter_combobox.addItem("大于")
+        self.size_filter_combobox.addItem("小于")
+        self.size_filter_combobox.addItem("介于")
+        self.size_filter_edit1 = QLineEdit()
+        self.size_filter_edit1.setPlaceholderText("10")
+        self.size_filter_edit2 = QLineEdit()
+        self.size_filter_edit2.setPlaceholderText("100")
+        self.big_filter_label = QLabel("大于")
+        self.small_filter_label = QLabel("小于")
+        self.size_filter_label = QLabel("MB")
+        self.both_filter_label = QLabel("和")
+        # 初始禁用
+        self.size_filter_combobox.setEnabled(False)
+        self.size_filter_edit1.setEnabled(False)
+        self.size_filter_edit2.setEnabled(False)
+        # 添加控件到size_filter布局
+        size_filter_layout.addWidget(self.size_filter_combobox)
+        size_filter_layout.addWidget(self.big_filter_label)
+        size_filter_layout.addWidget(self.size_filter_edit1)
+        size_filter_layout.addWidget(self.both_filter_label)
+        size_filter_layout.addWidget(self.small_filter_label)
+        size_filter_layout.addWidget(self.size_filter_edit2)
+        size_filter_layout.addWidget(self.size_filter_label)
+        size_filter_layout.addStretch()
+
+        # 连接信号与槽函数
+        self.time_filter_checkbox.stateChanged.connect(self.update_filter_checkbox)
+        self.size_filter_checkbox.stateChanged.connect(self.update_filter_checkbox)
+        self.size_filter_combobox.currentIndexChanged.connect(self.update_filter_sizelabel_show)
+
+        # 将筛选规则添加到整体布局中
+        filter_layout.addStretch()
+        filter_layout.addWidget(self.time_filter_checkbox)
+        filter_layout.addLayout(time_filter_layout)
+        filter_layout.addStretch()
+        filter_layout.addWidget(self.size_filter_checkbox)
+        filter_layout.addLayout(size_filter_layout)
+        filter_layout.addStretch()
+
+        filter_group.setLayout(filter_layout)
 
         # 说明界面
         instruction_tab = QWidget()
         instruction_edit = QTextEdit()
+        instruction_edit.setStyleSheet("font-size: 14px;")
         instruction_edit.setReadOnly(True)
         instruction_edit.setText("""
-        说明：请阅读以下规则以更好地使用本功能。
+        说明：请阅读以下规则以更好地使用本应用。
 
         一、分类规则 (Classification Rules)
         
@@ -401,7 +475,7 @@ class AdvancedSettings(QDialog):
 
         # 将页面添加到TabWidget
         self.advanced_settings_tab.addTab(classification_group, "分类规则")
-        self.advanced_settings_tab.addTab(filter_tab, "筛选规则")
+        self.advanced_settings_tab.addTab(filter_group, "筛选规则")
         self.advanced_settings_tab.addTab(instruction_tab, "说明")
 
         w_layout.addWidget(self.advanced_settings_tab)
@@ -460,3 +534,39 @@ class AdvancedSettings(QDialog):
             self.size_edit2.setEnabled(is_checked)
         elif sender_checkbox == self.custom_checkbox:
             self.custom_button.setEnabled(is_checked)
+
+    def update_filter_sizelabel_show(self):
+        size_choice = self.size_filter_combobox.currentText()
+        if size_choice == "大于":
+            self.big_filter_label.show()
+            self.small_filter_label.hide()
+            self.both_filter_label.hide()
+            self.size_filter_edit1.show()
+            self.size_filter_edit2.hide()
+            self.size_filter_label.setText("MB")
+        elif size_choice == "小于":
+            self.big_filter_label.hide()
+            self.small_filter_label.show()
+            self.both_filter_label.hide()
+            self.size_filter_edit1.hide()
+            self.size_filter_edit2.show()
+            self.size_filter_label.setText("MB")
+        elif size_choice == "介于":
+            self.big_filter_label.hide()
+            self.small_filter_label.hide()
+            self.both_filter_label.show()
+            self.size_filter_edit1.show()
+            self.size_filter_edit2.show()
+            self.size_filter_label.setText("MB之间")
+
+    def update_filter_checkbox(self):
+        sender_checkbox = self.sender()
+        is_checked = sender_checkbox.isChecked()
+        print(f"Checkbox {sender_checkbox.text()} state: {'Checked' if is_checked else 'Unchecked'}")
+        if sender_checkbox == self.time_filter_checkbox:
+            self.start_filter_date.setEnabled(is_checked)
+            self.end_filter_date.setEnabled(is_checked)
+        elif sender_checkbox == self.size_filter_checkbox:
+            self.size_filter_combobox.setEnabled(is_checked)
+            self.size_filter_edit1.setEnabled(is_checked)
+            self.size_filter_edit2.setEnabled(is_checked)
