@@ -24,7 +24,21 @@ class FileOrganizer(QObject):
 
     def stop(self):
         self.isRunning = False
-
+    """
+    json格式
+        {
+            "classification_rule": {
+                "priority": ["custom", "size", "time", "default"],
+                "custom": {"keyword": [xx,yy], "expand": [.xx,.yy]}
+                "size": {"enabled": True, "model": "大于", "value1" : 100, "value2" : 200},
+                "time": {"enabled": True, "start_time": 1000000， "end_time": 2000000}, 
+                "default": {"enabled": True,
+                    "images": "图片", "videos": "视频", "decuments": "文档", "others": "其他"
+                }}
+            },
+            "filter_rule": {同上}
+        }
+    """
     def loadRules(self):
         # 解析json文件
         if not os.path.isfile(self.rules_json_filepath):
@@ -60,9 +74,11 @@ class FileOrganizer(QObject):
                 self.status_updated.emit(f"错误：文件夹 '{self.filepath}' 不存在！")
                 self.finished.emit()
                 return
-                if self.rules.get("filter_rule"):
-                    if filter_rule[]
-
+            else:
+                filenames = os.listdir(self.filepath)
+                for filename in filenames:
+                    self.status_updated.emit(f"正在整理 '{filename}")
+                    # 按顺序依次调用整理函数
     def organize_by_custom(self):
         pass
     def organize_by_size(self):
@@ -91,6 +107,56 @@ class FileOrganizer(QObject):
         except Exception as e:
             self.status_updated.emit(f"移动文件 {filename} 时出错: {e}")
             return False
+    # 筛选时间
+    def filter_by_time(self,filename):
+        filter_rule = self.rules.get("filter_rule", {})
+        time_filter = filter_rule.get("time", {})
+        if not time_filter.get("enabled", True):
+            return False
+        try:
+            old_path = os.path.join(self.filepath, filename)
+            file_time = os.path.getmtime(old_path)
+            start_time = filter_rule.get("start_time")
+            end_time = filter_rule.get("end_time")
+            if not start_time or not end_time:
+                return False
+            if start_time <= file_time <= end_time:
+                return True
+            else:
+                return False
+        except Exception as e:
+            self.status_updated.emit(f"按时间筛选 {filename} 时出错: {e}")
+        return False
+
+    # 筛选大小
+    def filter_by_size(self, filename):
+        filter_rule = self.rules.get("filter_rule", {})
+        size_filter = filter_rule.get("size", {})
+        if not size_filter.get("enabled", True):
+            return False
+        else:
+            try:
+                old_path = os.path.join(self.filepath, filename)
+                file_size = os.path.getsize(old_path) / 1024
+                model = size_filter.get("model")
+                value1 = float(size_filter.get("value1"))
+                value2 = float(size_filter.get("value2"))
+                if model == "大于":
+                    if file_size > value1:
+                        return True
+                elif model == "小于":
+                    if file_size < value2:
+                        return True
+                elif model == "介于":
+                    if value1 < file_size < value2:
+                        return True
+                return False
+            except (TypeError, ValueError) as e:
+                self.status_updated.emit(f"按大小筛选时出错: 规则中的值无效 - {e}")
+                return False
+
+
+
     # def organize(self):
     #     if not os.path.isdir(self.filepath):
     #         self.status_updated.emit(f"错误：文件夹 '{self.filepath}' 不存在！")
