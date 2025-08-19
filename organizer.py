@@ -1,7 +1,6 @@
 # organizer.py
 
 import os
-import re
 import json
 
 from PySide6.QtCore import QObject, Signal
@@ -29,7 +28,7 @@ class FileOrganizer(QObject):
         {
             "classification_rule": {
                 "priority": ["custom", "size", "time", "default"],
-                "custom": {"keyword": [xx,yy], "expand": [.xx,.yy]}
+                "custom": {"enabled": True, "keyword": [xx,yy]}
                 "size": {"enabled": True, "model": "大于", "value1" : 100, "value2" : 200},
                 "time": {"enabled": True, "start_time": 1000000， "end_time": 2000000}, 
                 "default": {"enabled": True,
@@ -79,8 +78,51 @@ class FileOrganizer(QObject):
                 for filename in filenames:
                     self.status_updated.emit(f"正在整理 '{filename}")
                     # 按顺序依次调用整理函数
-    def organize_by_custom(self):
-        pass
+
+            self.status_updated.emit(f'准备整理位于 {self.filepath} 的文件...')
+
+            # 定义默认分类
+            default_dirs = {
+                '图片': os.path.join(self.filepath, '图片'),
+                '视频': os.path.join(self.filepath, '视频'),
+                '文档': os.path.join(self.filepath, '文档'),
+                '其他': os.path.join(self.filepath, '其他')
+            }
+            # 创建所有默认文件夹
+            for dir_path in default_dirs.values():
+                os.makedirs(dir_path, exist_ok=True)
+
+            # 创建所有自定义文件夹
+            custom_dirs = {}
+            for item in self.custom_list:
+                folder_name = ''
+                if item.startswith('.'):
+                    folder_name = f'拓展名为{item}的文件'
+                else:
+                    folder_name = f'文件名中存在{item}的文件'
+                dir_path = os.path.join(self.filepath, folder_name)
+                os.makedirs(dir_path, exist_ok=True)
+                custom_dirs[item] = dir_path
+
+    def organize_by_custom(self, filename):
+        classification_rule = self.rules["classification_rule"]
+        custom = classification_rule.get("custom", {})
+        if not custom.get("enabled", True):
+            return False
+        try:
+            keywords = custom.get("keyword", [])
+            name, ext = os.path.splitext(filename)
+            for keyword in keywords:
+                if keyword.startswith("."):
+                    if keyword == ext:
+                        return True
+                elif keyword in name:
+                    return True
+            return False
+        except Exception as e:
+            self.status_updated.emit(f"按自定义规则分类 {filename} 时出错: {e}")
+            return False
+
     def organize_by_size(self):
         pass
     def organize_by_time(self):

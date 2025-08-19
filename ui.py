@@ -2,6 +2,7 @@
 from pydoc import describe
 
 from PySide6.QtCore import Qt, Signal, QThread, QDate
+from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QDialog, \
     QFileDialog, QWidget, QProgressBar, QTabWidget, QGroupBox, QCheckBox, QDateEdit, QComboBox, QTextEdit, QSizePolicy
 from organizer import FileOrganizer
@@ -302,9 +303,12 @@ class AdvancedSettings(QDialog):
         self.size_combobox.addItem("大于")
         self.size_combobox.addItem("小于")
         self.size_combobox.addItem("介于")
+        int_validator = QIntValidator()
         self.size_edit1 = QLineEdit()  # edit1总是作为大于的值
+        self.size_edit1.setValidator(int_validator)
         self.size_edit1.setPlaceholderText("10")
         self.size_edit2 = QLineEdit()  # edit2总是作为小于的值
+        self.size_edit2.setValidator(int_validator)
         self.size_edit2.setPlaceholderText("100")
         self.big_label = QLabel("大于")
         self.small_label = QLabel("小于")
@@ -393,8 +397,10 @@ class AdvancedSettings(QDialog):
         self.size_filter_combobox.addItem("小于")
         self.size_filter_combobox.addItem("介于")
         self.size_filter_edit1 = QLineEdit()
+        self.size_filter_edit1.setValidator(int_validator)
         self.size_filter_edit1.setPlaceholderText("10")
         self.size_filter_edit2 = QLineEdit()
+        self.size_filter_edit2.setValidator(int_validator)
         self.size_filter_edit2.setPlaceholderText("100")
         self.big_filter_label = QLabel("大于")
         self.small_filter_label = QLabel("小于")
