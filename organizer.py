@@ -23,21 +23,7 @@ class FileOrganizer(QObject):
 
     def stop(self):
         self.isRunning = False
-    """
-    json格式
-        {
-            "classification_rule": {
-                "priority": ["custom", "size", "time", "default"],
-                "custom": {"enabled": True, "keyword": [xx,yy]}
-                "size": {"enabled": True, "model": "大于", "value1" : 100, "value2" : 200},
-                "time": {"enabled": True, "start_time": 1000000， "end_time": 2000000}, 
-                "default": {"enabled": True,
-                    "images": "图片", "videos": "视频", "decuments": "文档", "others": "其他"
-                }}
-            },
-            "filter_rule": {同上}
-        }
-    """
+
     def loadRules(self):
         # 解析json文件
         if not os.path.isfile(self.rules_json_filepath):
@@ -122,12 +108,94 @@ class FileOrganizer(QObject):
         except Exception as e:
             self.status_updated.emit(f"按自定义规则分类 {filename} 时出错: {e}")
             return False
+    """
+    json格式
+        {
+            "classification_rule": {
+                "priority": ["custom", "size", "time", "default"],
+                "custom": {"enabled": True, "keyword": [xx,yy]}
+                "size": {"enabled": True, "model": "大于", "value1" : 100, "value2" : 200},
+                "time": {"enabled": True, "start_time": 1000000， "end_time": 2000000}, 
+                "default": {"enabled": True,
+                    "images": True, "videos": True, "decuments": True, "others": True
+                }}
+            },
+            "filter_rule": {同上}
+        }
+    """
+    def organize_by_size(self, filename):
+        classification_rule = self.rules["classification_rule"]
+        size = classification_rule.get("size", {})
+        if not size.get("enabled", True):
+            return False
+        try:
+            old_path = os.path.join(self.filepath, filename)
+            file_size = os.getsize(old_path) / 1024
+            model = size.get("model")
+            value1 = size.get("value1")
+            value2 = size.get("value2")
+            if model == "大于":
+                if file_size > value1:
+                    return True
+            elif model == "小于":
+                if file_size < value2:
+                    return True
+            elif model == "介于":
+                if value1 < file_size < value2:
+                    return True
+            return False
+        except (TypeError, ValueError) as e:
+            self.status_updated.emit(f"按大小分类时出错: 规则中的值无效 - {e}")
+            return False
 
-    def organize_by_size(self):
-        pass
-    def organize_by_time(self):
-        pass
-    def organize_by_default(self):
+    def organize_by_time(self, filename):
+        classification_rule = self.rules["classification_rule"]
+        time = classification_rule.get("time", {})
+        if not time.get("enabled", True):
+            return False
+        try:
+            old_path = os.path.join(self.filepath, filename)
+            file_time = os.path.getmtime(old_path)
+            start_time = time.get("start_time")
+            end_time = time.get("end_time")
+            if start_time < file_time < end_time:
+                return True
+            return False
+        except Exception as e:
+            self.status_updated.emit(f"按时间分类 {filename} 时出错: {e}")
+            return False
+
+    def organize_by_default(self, filename):
+        classification_rule = self.rules["classification_rule"]
+        default = classification_rule.get("default", {})
+        if not default.get("enabled", True):
+            return False
+        try:
+            old_path = os.path.join(self.filepath, filename)
+            name, ext = os.path.splitext(filename)
+            if default.get("images", True):
+                if ext in ['.jpg', '.png', '.gif', '.jpeg', '.bmp', '.svg']:
+                    new_path = os.path.join(self.filepath, '图片')
+                    self.status_updated.emit(f"正在移动 [图片] {filename} ...")
+                    os.rename(old_path, new_path)
+                elif ext in ['.mp4', '.mov', '.avi', '.mkv', '.wmv']:
+                    new_path = os.path.join(self.filepath, '视频')
+                    self.status_updated.emit(f"正在移动 [视频] {filename} ...")
+                    os.rename(old_path, new_path)
+                elif ext in ['.txt', '.doc', '.docx', '.rtf', '.xlsx', '.xls', '.ppt', '.pptx', '.pdf']:
+                    new_path = os.path.join(self.filepath, '文档')
+                    self.status_updated.emit(f"正在移动 [文档] {filename}")
+                    os.rename(old_path, new_path)
+                else:
+                    new_path = os.path.join(self.filepath, '其他')
+                    self.status_updated.emit(f"正在移动 [其他] {filename}")
+                    os.rename(old_path, new_path)
+            return False
+        except Exception as e:
+            self.status_updated.emit(f"按预设分类 {filename} 时出错: {e}")
+            return False
+    # 通用创建文件夹函数
+    def makefile_dir(self, filename):
         pass
 
     # 通用移动函数
