@@ -2,7 +2,6 @@
 
 import os
 import json
-from os import makedirs
 
 from PySide6.QtCore import QObject, Signal
 
@@ -33,7 +32,7 @@ class FileOrganizer(QObject):
                 "size": {"enabled": True, "model": "大于", "value1" : 100, "value2" : 200},
                 "time": {"enabled": True, "start_time": 1000000， "end_time": 2000000}, 
                 "default": {"enabled": True,
-                    "images": True, "videos": True, "decuments": True, "others": True
+                    "images": True, "videos": True, "documents": True, "others": True
                 }}
             },
             "filter_rule": {同上}
@@ -58,7 +57,7 @@ class FileOrganizer(QObject):
                     self.rules = json.load(f)
                     return True
             except (json.JSONDecodeError, KeyError) as e:
-                self.status_updated.emit(f"错误：规则文件 '{os.path.basename(self.rules_path)}' 格式无效: {e}")
+                self.status_updated.emit(f"错误：规则文件 '{os.path.basename(self.rules_json_filepath)}' 格式无效: {e}")
                 return False
             except Exception as e:
                 self.status_updated.emit(f"错误：无法读取规则文件: {e}")
@@ -152,9 +151,11 @@ class FileOrganizer(QObject):
                         does_match = True
                         dest_folder_name = '按时间分类的文件'
 
-                    elif rule_type == "default" and self.organize_by_default(filename):
-                        # default规则的文件移动在organize_by_default中已经完成
-                        moved = True  # 标记一下，表示它已经被处理了
+                    elif rule_type == "default":
+                        dest_folder_name = self.get_default_destination(filename)
+                        if dest_folder_name:
+                            if self.move_file(filename, dest_folder_name, category_prefix="default"):
+                                moved = True
 
                     if does_match and dest_folder_name:
                         if self.move_file(filename, dest_folder_name, category_prefix=rule_type):
@@ -171,7 +172,7 @@ class FileOrganizer(QObject):
             self.finished.emit()
 
         except Exception as e:
-            self.status_updated.emit(f"整理过程发生错误: {e}")
+            self.status_updated.emit(f"整理过程发生错误: \n{e}")
             self.finished.emit()
 
 
@@ -284,7 +285,7 @@ class FileOrganizer(QObject):
             return False
         try:
             old_path = os.path.join(self.filepath, filename)
-            file_size = os.getsize(old_path) / 1024
+            file_size = os.path.getsize(old_path) / (1024 * 1024)
             model = size.get("model")
             value1 = size.get("value1")
             value2 = size.get("value2")
@@ -319,35 +320,34 @@ class FileOrganizer(QObject):
             self.status_updated.emit(f"按时间分类 {filename} 时出错: {e}")
             return False
 
-    def organize_by_default(self, filename):
-        classification_rule = self.rules["classification_rule"]
-        default = classification_rule.get("default", {})
-        if not default.get("enabled", True):
-            return False
-        try:
-            old_path = os.path.join(self.filepath, filename)
-            name, ext = os.path.splitext(filename)
-            if default.get("images", True):
-                if ext in ['.jpg', '.png', '.gif', '.jpeg', '.bmp', '.svg']:
-                    new_path = os.path.join(self.filepath, '图片')
-                    self.status_updated.emit(f"正在移动 [图片] {filename} ...")
-                    os.rename(old_path, new_path)
-                elif ext in ['.mp4', '.mov', '.avi', '.mkv', '.wmv']:
-                    new_path = os.path.join(self.filepath, '视频')
-                    self.status_updated.emit(f"正在移动 [视频] {filename} ...")
-                    os.rename(old_path, new_path)
-                elif ext in ['.txt', '.doc', '.docx', '.rtf', '.xlsx', '.xls', '.ppt', '.pptx', '.pdf']:
-                    new_path = os.path.join(self.filepath, '文档')
-                    self.status_updated.emit(f"正在移动 [文档] {filename}")
-                    os.rename(old_path, new_path)
-                else:
-                    new_path = os.path.join(self.filepath, '其他')
-                    self.status_updated.emit(f"正在移动 [其他] {filename}")
-                    os.rename(old_path, new_path)
-            return False
-        except Exception as e:
-            self.status_updated.emit(f"按预设分类 {filename} 时出错: {e}")
-            return False
+    def get_default_destination(self, filename):
+        # 根据预设规则判断文件应被移动到哪个文件夹，返回文件夹名或None
+        classification_rule = self.rules.get("classification_rule", {})
+        default_rules = classification_rule.get("default", {})
+
+        name, ext = os.path.splitext(filename)
+        ext = ext.lower()  # 统一使用小写后缀名进行判断
+
+        # 检查各个类别是否启用，并进行匹配
+        if default_rules.get("images") and ext in ['.jpg', '.png', '.gif', '.jpeg', '.bmp', '.svg']:
+            return "图片"
+        if default_rules.get("videos") and ext in ['.mp4', '.mov', '.avi', '.mkv', '.wmv']:
+            return "视频"
+        if default_rules.get("documents") and ext in ['.txt', '.doc', '.docx', '.rtf', '.xlsx', '.xls', '.ppt', '.pptx',
+                                                      '.pdf']:
+            return "文档"
+
+        # 如果启用了“其他”分类，并且文件不属于上述任何一类，则归为“其他”
+        if default_rules.get("others"):
+            all_known_exts = {
+                '.jpg', '.png', '.gif', '.jpeg', '.bmp', '.svg',
+                '.mp4', '.mov', '.avi', '.mkv', '.wmv',
+                '.txt', '.doc', '.docx', '.rtf', '.xlsx', '.xls', '.ppt', '.pptx', '.pdf'
+            }
+            if ext not in all_known_exts:
+                return "其他"
+
+        return None  # 如果不匹配任何启用的规则，返回None
 
     # 筛选时间
     def filter_by_time(self,filename):
@@ -358,8 +358,8 @@ class FileOrganizer(QObject):
         try:
             old_path = os.path.join(self.filepath, filename)
             file_time = os.path.getmtime(old_path)
-            start_time = filter_rule.get("start_time")
-            end_time = filter_rule.get("end_time")
+            start_time = time_filter.get("start_time")
+            end_time = time_filter.get("end_time")
             if not start_time or not end_time:
                 return False
             if start_time <= file_time <= end_time:
@@ -379,7 +379,7 @@ class FileOrganizer(QObject):
         else:
             try:
                 old_path = os.path.join(self.filepath, filename)
-                file_size = os.path.getsize(old_path) / 1024
+                file_size = os.path.getsize(old_path) / (1024 * 1024)
                 model = size_filter.get("model")
                 value1 = float(size_filter.get("value1"))
                 value2 = float(size_filter.get("value2"))

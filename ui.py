@@ -1,7 +1,9 @@
 # ui.py
+import json
+import os
 from pydoc import describe
 
-from PySide6.QtCore import Qt, Signal, QThread, QDate
+from PySide6.QtCore import Qt, Signal, QThread, QDate, QDateTime, QTime
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QLabel, QLineEdit, QMessageBox, QPushButton, QVBoxLayout, QHBoxLayout, QDialog, \
     QFileDialog, QWidget, QProgressBar, QTabWidget, QGroupBox, QCheckBox, QDateEdit, QComboBox, QTextEdit, QSizePolicy
@@ -117,7 +119,8 @@ class MainWindow(QWidget):
 
         # 创建 QThread 和 FileOrganizer 实例
         self.worker_thread = QThread()
-        self.organizer = FileOrganizer(self.filepath, self.custom_list)
+        config_path = os.path.join(os.getcwd(), "config.json")
+        self.organizer = FileOrganizer(self.filepath, config_path)
 
         # 将 organizer移动到新线程中
         self.organizer.moveToThread(self.worker_thread)
@@ -158,7 +161,7 @@ class MainWindow(QWidget):
         if "错误" not in self.status_label.text():
             QMessageBox.information(self, '提示', '文件整理完成！')
         else:
-            QMessageBox.critical(self, '错误', f'整理过程中发生错误：\n{self.status_label.text()}')
+            QMessageBox.critical(self, '错误', self.status_label.text())
 
     def open_advanced_settings(self):
         if self.advanced_settings_window is None:
@@ -191,7 +194,7 @@ class CustomUI(QDialog):
         w_layout.addLayout(input_layout)
 
         # 提示信息
-        info_label = QLabel("注意：拓展名请在开头加上 .", self)
+        info_label = QLabel("注意：拓展名请在开头加上 . ", self)
         info_label.setStyleSheet("font-size: 15pt; color: red;")
         w_layout.addWidget(info_label, alignment=Qt.AlignCenter)
 
@@ -259,20 +262,21 @@ class AdvancedSettings(QDialog):
         classification_layout = QVBoxLayout()
 
         # 预设规则选项
-        default_label = QLabel("预设规则：")
+        self.default_checkbox = QCheckBox("预设规则：")
+        self.default_checkbox.setChecked(True)
         default_layout = QHBoxLayout()
-        image_checkbox = QCheckBox("图片")
-        image_checkbox.setChecked(True)
-        default_layout.addWidget(image_checkbox)
-        video_checkbox = QCheckBox("视频")
-        video_checkbox.setChecked(True)
-        default_layout.addWidget(video_checkbox)
-        doc_checkbox = QCheckBox("文档")
-        doc_checkbox.setChecked(True)
-        default_layout.addWidget(doc_checkbox)
-        other_checkbox = QCheckBox("其他")
-        other_checkbox.setChecked(True)
-        default_layout.addWidget(other_checkbox)
+        self.image_checkbox = QCheckBox("图片")
+        self.image_checkbox.setChecked(True)
+        default_layout.addWidget(self.image_checkbox)
+        self.video_checkbox = QCheckBox("视频")
+        self.video_checkbox.setChecked(True)
+        default_layout.addWidget(self.video_checkbox)
+        self.doc_checkbox = QCheckBox("文档")
+        self.doc_checkbox.setChecked(True)
+        default_layout.addWidget(self.doc_checkbox)
+        self.other_checkbox = QCheckBox("其他")
+        self.other_checkbox.setChecked(True)
+        default_layout.addWidget(self.other_checkbox)
 
         # 按时间分类
         self.time_checkbox = QCheckBox("按时间分类：")
@@ -346,12 +350,13 @@ class AdvancedSettings(QDialog):
         self.custom_button.clicked.connect(self.open_customUI)
 
         # 连接checkbox更新槽函数
+        self.default_checkbox.stateChanged.connect(self.update_default_checkbox_state)
         self.time_checkbox.stateChanged.connect(self.update_checkbox)
         self.size_checkbox.stateChanged.connect(self.update_checkbox)
         self.custom_checkbox.stateChanged.connect(self.update_checkbox)
 
         # 将所有分类规则组件按顺序添加到布局中
-        classification_layout.addWidget(default_label)
+        classification_layout.addWidget(self.default_checkbox)
         classification_layout.addLayout(default_layout)
         classification_layout.addStretch(1)
         classification_layout.addLayout(time_layout)
@@ -486,8 +491,30 @@ class AdvancedSettings(QDialog):
 
         w_layout.addWidget(self.advanced_settings_tab)
 
+        # 添加确定和取消按钮
+        button_layout = QHBoxLayout()
+        self.ok_button = QPushButton("确定")
+        self.cancel_button = QPushButton("取消")
+
+        button_layout.addStretch()
+        button_layout.addWidget(self.ok_button)
+        button_layout.addWidget(self.cancel_button)
+
+        w_layout.addLayout(button_layout)
+
+        # 连接按钮信号
+        self.ok_button.clicked.connect(self.save_and_close)
+        self.cancel_button.clicked.connect(self.reject)
+
         # 初始化UI状态
         self.update_sizelabel_show()
+
+    def update_default_checkbox_state(self, state):
+        is_checked = self.default_checkbox.isChecked()
+        self.image_checkbox.setEnabled(is_checked)
+        self.video_checkbox.setEnabled(is_checked)
+        self.doc_checkbox.setEnabled(is_checked)
+        self.other_checkbox.setEnabled(is_checked)
 
     def update_sizelabel_show(self):
         size_choice = self.size_combobox.currentText()
@@ -576,3 +603,73 @@ class AdvancedSettings(QDialog):
             self.size_filter_combobox.setEnabled(is_checked)
             self.size_filter_edit1.setEnabled(is_checked)
             self.size_filter_edit2.setEnabled(is_checked)
+
+    def save_and_close(self):
+        # 保存配置并关闭
+        self.save_config()
+        self.accept()
+
+    # 保存配置为json文件
+    def save_config(self):
+        config = {
+            "classification_rule": {
+                "priority": ["custom", "size", "time", "default"],
+                "custom": {"enabled": False, "keyword": []},
+                "size": {"enabled": False, "model": "", "value1": "", "value2": ""},
+                "time": {"enabled": False, "start_time": "", "end_time": ""},
+                "default": {"enabled": False,
+                            "images": False, "videos": False, "documents": False, "others": False}
+            },
+            "filter_rule": {
+                "size": {"enabled": False, "model": "", "value1": "", "value2": ""},
+                "time": {"enabled": False, "start_time": "", "end_time": ""}
+            }
+        }
+
+        # 填充分类规则
+        if self.custom_checkbox.isChecked():
+            config["classification_rule"]["custom"]["enabled"] = True
+            config["classification_rule"]["custom"]["keyword"] = self.custom_list
+        if self.size_checkbox.isChecked():
+            config["classification_rule"]["size"]["enabled"] = True
+            config["classification_rule"]["size"]["model"] = self.size_combobox.currentText()
+            config["classification_rule"]["size"]["value1"] = float(
+                self.size_edit1.text()) if self.size_edit1.text() else 0
+            config["classification_rule"]["size"]["value2"] = float(
+                self.size_edit2.text()) if self.size_edit2.text() else 0
+        if self.time_checkbox.isChecked():
+            config["classification_rule"]["time"]["enabled"] = True
+            start_dt = QDateTime(self.start_date.date(), QTime(0, 0, 0))
+            end_dt = QDateTime(self.end_date.date(), QTime(23, 59, 59))
+            config["classification_rule"]["time"]["start_time"] = start_dt.toSecsSinceEpoch()
+            config["classification_rule"]["time"]["end_time"] = end_dt.toSecsSinceEpoch()
+        if self.default_checkbox.isChecked():
+            config["classification_rule"]["default"]["enabled"] = True
+            config["classification_rule"]["default"]["images"] = self.image_checkbox.isChecked()
+            config["classification_rule"]["default"]["videos"] = self.video_checkbox.isChecked()
+            config["classification_rule"]["default"]["documents"] = self.doc_checkbox.isChecked()
+            config["classification_rule"]["default"]["others"] = self.other_checkbox.isChecked()
+
+        # 填充筛选规则
+        if self.size_filter_checkbox.isChecked():
+            config["filter_rule"]["size"]["enabled"] = True
+            config["filter_rule"]["size"]["model"] = self.size_filter_combobox.currentText()
+            config["filter_rule"]["size"]["value1"] = float(
+                self.size_filter_edit1.text()) if self.size_filter_edit1.text() else 0
+            config["filter_rule"]["size"]["value2"] = float(
+                self.size_filter_edit2.text()) if self.size_filter_edit2.text() else 0
+        if self.time_filter_checkbox.isChecked():
+            config["filter_rule"]["time"]["enabled"] = True
+            start_dt = QDateTime(self.start_filter_date.date(), QTime(0, 0, 0))
+            end_dt = QDateTime(self.end_filter_date.date(), QTime(23, 59, 59))
+            config["filter_rule"]["time"]["start_time"] = start_dt.toSecsSinceEpoch()
+            config["filter_rule"]["time"]["end_time"] = end_dt.toSecsSinceEpoch()
+
+        try:
+            path = os.getcwd()
+            config_path = os.path.join(path, "config.json")
+            with open(config_path, "w", encoding="utf-8") as f:
+                json.dump(config, f, ensure_ascii=False, indent=4)
+        except Exception as e:
+            QMessageBox.critical(self, "错误", f"保存配置文件失败: {e}")
+
